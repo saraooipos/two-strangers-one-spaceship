@@ -1,0 +1,29 @@
+#scene-root.fallback-active {
+  background:
+    radial-gradient(circle at 72% 28%, rgba(45, 226, 208, 0.22) 0 1px, transparent 2px),
+    radial-gradient(circle at 18% 68%, rgba(61, 169, 255, 0.24) 0 1px, transparent 2px),
+    radial-gradient(ellipse at 78% 48%, rgba(91, 77, 221, 0.36), transparent 48%),
+    linear-gradient(145deg, #080b27 0%, #171044 55%, #0b1030 100%);
+  background-size: 180px 180px, 240px 240px, auto, auto;
+}
+
+#scene-root.fallback-active::after {
+  content: '';
+  position: absolute;
+  width: clamp(9rem, 22vw, 17rem);
+  aspect-ratio: 1;
+  right: 10%;
+  top: 22%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #a9f9ed 0 3%, #3da9ff 22%, #5b4ddd 63%, #191043 100%);
+  box-shadow: 0 0 5rem rgba(45, 226, 208, 0.18);
+  opacity: 0.78;
+}
+
+@media (max-width: 600px) {
+  #scene-root.fallback-active::after {
+    right: -2rem;
+    top: 13%;
+    opacity: 0.45;
+  }
+}

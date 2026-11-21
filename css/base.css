@@ -1,0 +1,83 @@
+:root {
+  --bg: #080b27;
+  --panel: #171044;
+  --panel-solid: #121440;
+  --text: #f2f5ff;
+  --muted: #b7c3e5;
+  --blue: #3da9ff;
+  --turquoise: #2de2d0;
+  --purple: #5b4ddd;
+}
+
+* { box-sizing: border-box; }
+
+html { min-width: 320px; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: linear-gradient(160deg, var(--bg), var(--panel));
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+#scene-root {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 70% 25%, rgba(91, 77, 221, 0.25), transparent 50%), var(--bg);
+}
+
+.scene-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+  width: min(100% - 2rem, 72rem);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(1rem, 4vw, 3rem) 0;
+  overflow-wrap: anywhere;
+}
+
+h1, h2 { color: var(--turquoise); }
+
+h1, h2, p { margin-top: 0; }
+
+a { color: var(--blue); }
+
+button, a.button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--turquoise);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover, a.button:hover { filter: brightness(1.12); }
+
+:focus-visible {
+  outline: 3px solid var(--turquoise);
+  outline-offset: 3px;
+}
+
+@media (max-width: 767px) {
+  #app { width: min(100% - 1.25rem, 42rem); }
+}
+
+@media (min-width: 768px) {
+  #app { width: min(100% - 3rem, 72rem); }
+}

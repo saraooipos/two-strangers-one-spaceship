@@ -1,0 +1,12 @@
+{
+  "name": "two-strangers-one-spaceship",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only tooling. Nothing here is shipped to the browser.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "fast-check": "^3.23.1"
+  }
+}

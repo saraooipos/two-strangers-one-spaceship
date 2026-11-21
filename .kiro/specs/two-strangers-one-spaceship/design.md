@@ -114,7 +114,9 @@ docs/SETUP.md           Supabase and GitHub Pages steps (Req 13.6)
 
 - On first visit the browser calls `signInAnonymously()`. supabase-js stores the session in `localStorage`, so refresh and return on the same device restore the same user (Req 4.2, 4.3).
 - The **room URL** carries the room id: `#/room/<room_id>`. The **invite URL** carries the token only: `#/join/<token>`. The server resolves the room from the token's hash, so the browser never sends a room id when joining.
-- The invite token is 16 random bytes from `gen_random_bytes(16)` (128 bits), encoded as hex. Only its SHA-256 hash is stored, in `room_invites`. The Captain's browser keeps the plain token in `localStorage` so the invite link can be shown again.
+- The invite token is 16 random bytes from `gen_random_bytes(16)` (128 bits), encoded as hex. Only its SHA-256 hash is stored, in `room_invites`. `create_room` and `regenerate_invite` return the plaintext token exactly once in the RPC response.
+- The client keeps the plaintext token in memory for the current page view only, builds `#/join/<token>`, and shows it as an invitation link with a Copy action. The plaintext token is never written to `localStorage`, `sessionStorage`, cookies, IndexedDB or any other client-side storage.
+- After a refresh the Captain sees no plaintext token. The waiting screen offers **Regenerate invitation**, which calls `regenerate_invite`; the new hash replaces the old one, so the previous token stops working immediately.
 - Expired session: one silent `refreshSession()`. If it fails, show the rejoin message (Req 15.4).
 - v1 limitation: a new device or cleared storage gets a new anonymous user. That user can enter only through an invite while a seat is free. There is no account recovery.
 
@@ -130,9 +132,11 @@ sequenceDiagram
   C->>DB: rpc create_room()
   DB->>DB: advisory lock on auth.uid()
   DB->>DB: count waiting rooms (max 3), insert room, captain player, invite hash
-  DB-->>C: room_id, invite_token (plain, shown once)
-  C->>C: store token in localStorage, show invite URL
+  DB-->>C: room_id, invite_token (plaintext, returned once)
+  C->>C: keep token in memory only, show invite URL with Copy
 ```
+
+On refresh the in-memory token is gone; the Captain uses Regenerate invitation (`regenerate_invite`) to get a new link, which invalidates the old token.
 
 ### Join room
 
@@ -438,9 +442,9 @@ Common grants for every RPC below: `revoke all ... from public, anon; grant exec
 
 | Signature | Caller / role check | State preconditions | Input validation | Locking | Idempotency | Errors | Grants |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `create_room() returns (room_id, invite_token)` | Any authenticated user. Caller becomes Captain. | Caller owns fewer than 3 waiting rooms (technical abuse limit, pending a recorded Scope_Decision). | none | `pg_advisory_xact_lock(hashtextextended(auth.uid()::text, 0))` before the count and insert | Not idempotent: each call makes a new room (bounded by the limit) | `too_many_waiting_rooms` | authenticated |
+| `create_room() returns (room_id, invite_token)` | Any authenticated user. Caller becomes Captain. | Caller owns fewer than 3 waiting rooms (technical abuse limit, pending a recorded Scope_Decision). | none | `pg_advisory_xact_lock(hashtextextended(auth.uid()::text, 0))` before the count and insert | Not idempotent: each call makes a new room (bounded by the limit). The plaintext token is returned once and never stored; only its hash is saved. | `too_many_waiting_rooms` | authenticated |
 | `join_room(p_token text) returns json {room_id, role}` | Any authenticated user. Becomes Co-Pilot. The room is resolved from the token, never supplied by the client. | Steps: validate token (hex, length 32) -> `digest(p_token,'sha256')` -> look up `room_invites` by `invite_hash` (unique index) to get `room_id` -> `SELECT ... FOR UPDATE` on that room. Then: caller already a member -> return `{room_id, role}` unchanged. Otherwise room `waiting` with exactly one player -> insert Co-Pilot with `user_id = auth.uid()`, set `active`, create mission 1, return `{room_id, role:'copilot'}` | Token is hex, length 32 | `FOR UPDATE` on the resolved room row | Idempotent: an existing member (a Co-Pilot refreshing, or the Captain opening their own invite, who gets role `captain`) gets `{room_id, role}` with no change | `invalid_invite` (unknown or malformed token, indistinguishable), `room_full`, `room_not_waiting` | authenticated |
-| `regenerate_invite(p_room_id uuid) returns text` | Caller is the Captain of `p_room_id` | Room `waiting` | none | `FOR UPDATE` on the room row | Each call replaces the hash; only the latest token works | `not_member`, `not_captain`, `room_not_waiting` | authenticated |
+| `regenerate_invite(p_room_id uuid) returns text` | Caller is the Captain of `p_room_id` | Room `waiting` | none | `FOR UPDATE` on the room row | Each call replaces the hash; only the latest token works. The plaintext token is returned once and never stored; the client keeps it in memory only. | `not_member`, `not_captain`, `room_not_waiting` | authenticated |
 | `submit_decision(p_room_id uuid, p_mission_number int, p_choice int) returns json` | Caller is a member of `p_room_id` | Room `active`; `p_mission_number = rooms.current_mission`; previous mission revealed | `p_choice` in 0..3; mission number 1..5 | `FOR UPDATE` on the mission row | Repeat call returns stored state with `already_locked: true`; the new choice is ignored | `not_member`, `room_not_active`, `wrong_mission`, `bad_choice`, `outcome_missing` (`already_locked` is a response flag, not an exception) | authenticated |
 | `advance_mission(p_room_id uuid, p_expected_mission int) returns int` | Member | Room `active`; current mission == `p_expected_mission`; that mission revealed; `p_expected_mission < 5` | expected 1..4 | `FOR UPDATE` on the room row | If `current_mission` is already `p_expected_mission + 1`, return it without change | `not_member`, `not_revealed`, `wrong_mission` | authenticated |
 | `add_inside_joke(p_room_id uuid, p_text text)` | Member | Room `active` or `completed`; at most 20 Inside_Jokes per player per Room (count where `room_id = p_room_id and author_id = auth.uid() and kind = 'inside_joke'`) | trimmed length 1..140 | `FOR UPDATE` on the room row (serializes the cap) | Not idempotent; each valid call adds one joke (bounded by the 20-per-player cap) | `not_member`, `bad_length`, `too_many_jokes` | authenticated |
@@ -741,6 +745,7 @@ Documented step by step in `docs/SETUP.md`:
 - Content-Security-Policy `<meta>` tag allowing only self, the pinned CDN and the Supabase host.
 - CDN imports are pinned to exact versions.
 - No secrets in the repo; `config.js` contains only the public key and URL.
+- The plaintext invite token exists only in the RPC response and in page memory. It is never persisted in any client-side storage and never logged.
 
 ## Correctness Properties
 
